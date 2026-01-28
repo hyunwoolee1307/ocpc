@@ -208,6 +208,10 @@ __marimo__/
 
 # Data
 data/
+proc/
+clim/
+fig/
+notebooks/
 *.nc
 
 # Results
