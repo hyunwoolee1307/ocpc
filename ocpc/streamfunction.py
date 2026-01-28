@@ -92,6 +92,20 @@ def _compute_vorticity(ugrd: np.ndarray, vgrd: np.ndarray, lat_rad: np.ndarray, 
     return dv_dx - du_dy
 
 
+def _compute_divergence(ugrd: np.ndarray, vgrd: np.ndarray, lat_rad: np.ndarray, lon_rad: np.ndarray) -> np.ndarray:
+    """Compute divergence on a sphere from wind components."""
+    dlon = float(np.gradient(lon_rad).mean())
+    dlat = float(np.gradient(lat_rad).mean())
+    cos_lat = np.cos(lat_rad)
+    cos_lat = np.where(np.abs(cos_lat) < 1e-6, 1e-6, cos_lat)
+
+    du_dlon = np.gradient(ugrd, dlon, axis=-1)
+    v_cos = vgrd * cos_lat[..., np.newaxis]
+    dvcos_dlat = np.gradient(v_cos, dlat, axis=-2)
+
+    return (du_dlon + dvcos_dlat) / (EARTH_RADIUS_M * cos_lat[..., np.newaxis])
+
+
 def _solve_poisson_on_sphere(zeta: np.ndarray, lat_rad: np.ndarray, lon_rad: np.ndarray) -> np.ndarray:
     """Solve ∇²ψ = ζ on a sphere with periodic lon and Neumann at the poles."""
     nlat, nlon = zeta.shape[-2], zeta.shape[-1]
@@ -277,6 +291,59 @@ def compute_streamfunction(
         raise ValueError(f"Unknown method '{method}'. Expected 'integral', 'poisson', or 'scipy'.")
 
     return np.where(mask, np.nan, stream)
+
+
+def compute_wind_decomposition(
+    ugrd: np.ndarray, vgrd: np.ndarray, lat: np.ndarray, lon: np.ndarray, method: str = "scipy"
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Compute Helmholtz decomposition of winds on a sphere.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        (psi, chi, u_rot, v_rot, u_div, v_div)
+    """
+    lat_rad = np.deg2rad(lat)
+    lon_rad = np.deg2rad(lon)
+    mask = np.isnan(ugrd) | np.isnan(vgrd)
+    u_clean = np.nan_to_num(ugrd, nan=0.0)
+    v_clean = np.nan_to_num(vgrd, nan=0.0)
+
+    zeta = _compute_vorticity(u_clean, v_clean, lat_rad, lon_rad)
+    div = _compute_divergence(u_clean, v_clean, lat_rad, lon_rad)
+
+    if method == "poisson":
+        psi = _solve_poisson_on_sphere(zeta, lat_rad, lon_rad)
+        chi = _solve_poisson_on_sphere(div, lat_rad, lon_rad)
+    elif method == "scipy":
+        psi = _solve_poisson_on_sphere_scipy(zeta, lat_rad, lon_rad)
+        chi = _solve_poisson_on_sphere_scipy(div, lat_rad, lon_rad)
+    else:
+        raise ValueError(f"Unknown method '{method}'. Expected 'poisson' or 'scipy'.")
+
+    dlon = float(np.gradient(lon_rad).mean())
+    dlat = float(np.gradient(lat_rad).mean())
+    cos_lat = np.cos(lat_rad)
+    cos_lat = np.where(np.abs(cos_lat) < 1e-6, 1e-6, cos_lat)
+
+    dpsi_dlat = np.gradient(psi, dlat, axis=-2)
+    dpsi_dlon = np.gradient(psi, dlon, axis=-1)
+    dchi_dlat = np.gradient(chi, dlat, axis=-2)
+    dchi_dlon = np.gradient(chi, dlon, axis=-1)
+
+    u_rot = -dpsi_dlat / EARTH_RADIUS_M
+    v_rot = dpsi_dlon / (EARTH_RADIUS_M * cos_lat[..., np.newaxis])
+    u_div = dchi_dlon / (EARTH_RADIUS_M * cos_lat[..., np.newaxis])
+    v_div = dchi_dlat / EARTH_RADIUS_M
+
+    psi = np.where(mask, np.nan, psi)
+    chi = np.where(mask, np.nan, chi)
+    u_rot = np.where(mask, np.nan, u_rot)
+    v_rot = np.where(mask, np.nan, v_rot)
+    u_div = np.where(mask, np.nan, u_div)
+    v_div = np.where(mask, np.nan, v_div)
+
+    return psi, chi, u_rot, v_rot, u_div, v_div
 
 
 def _build_streamfunction_da(stream: np.ndarray, template: xr.DataArray) -> xr.DataArray:
