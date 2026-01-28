@@ -1,6 +1,14 @@
 # ocpc
 Monthly operational workflow at the Ocean Climate Prediction Center
 
+## Preferred tooling
+
+- Statistics/EDA: R
+- Numerical computing (especially linear algebra): Julia
+- Visualization: Python
+
+See `docs/setup.md` for the full environment standard.
+
 ## Wind decomposition plotting
 
 Use the plotting helper to visualize Helmholtz decomposition from a NetCDF file:

@@ -22,6 +22,14 @@ env/       # environment files
 docs/      # project documentation
 ```
 
+## Preferred Tooling (Project Standard)
+
+- **Statistics/EDA**: R  
+- **Numerical computing (esp. linear algebra)**: Julia  
+- **Visualization**: Python  
+
+Use these defaults unless there is a clear technical reason to deviate (e.g., required library or performance constraints).
+
 ## Python Environment (Conda Recommended)
 
 ### Supported Python
